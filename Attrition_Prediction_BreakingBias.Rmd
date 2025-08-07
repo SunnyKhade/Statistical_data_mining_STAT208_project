@@ -1,0 +1,110 @@
+
+---
+title: 'STAT 208 Project: Predicting Employee Attrition'
+author: "Team Breaking Bias"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Objective 1: Predicting Employee Attrition
+
+```{r load-packages}
+library(tidyverse)
+library(caret)
+library(randomForest)
+library(e1071)
+```
+
+```{r load-data}
+train <- read.csv("D:/MASTERS/SPRING25/StatisticalDataMiningMethods_STAT208/Project/archive (1)/train.csv")
+test <- read.csv("D:/MASTERS/SPRING25/StatisticalDataMiningMethods_STAT208/Project/archive (1)/test.csv")
+
+# Convert target variable
+train$Attrition <- ifelse(train$Attrition == "Left", 1, 0)
+test$Attrition <- ifelse(test$Attrition == "Left", 1, 0)
+
+# Drop Employee ID
+train <- train %>% select(-Employee.ID)
+test <- test %>% select(-Employee.ID)
+```
+
+```{r encode-factors}
+# Convert character columns to factors
+factor_cols <- sapply(train, is.character)
+train[factor_cols] <- lapply(train[factor_cols], factor)
+test[factor_cols] <- lapply(test[factor_cols], factor)
+```
+
+```{r train-model}
+set.seed(123)
+splitIndex <- createDataPartition(train$Attrition, p = 0.8, list = FALSE)
+train_data <- train[splitIndex,]
+val_data <- train[-splitIndex,]
+train_data$Attrition <- as.factor(train_data$Attrition)
+val_data$Attrition <- as.factor(val_data$Attrition)
+
+model_rf <- randomForest(Attrition ~ ., data = train_data, importance = TRUE)
+pred_rf <- predict(model_rf, val_data)
+confusionMatrix(as.factor(pred_rf), as.factor(val_data$Attrition))
+```
+
+## Objective 2: Feature Importance
+
+```{r feature-importance}
+importance_df <- as.data.frame(importance(model_rf))
+importance_df$Feature <- rownames(importance_df)
+importance_df <- importance_df %>% arrange(desc(MeanDecreaseGini))
+
+# Plot top 10 features
+top_features <- importance_df[1:10,]
+ggplot(top_features, aes(x = reorder(Feature, MeanDecreaseGini), y = MeanDecreaseGini)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(title = "Top 10 Important Features Influencing Attrition",
+       x = "Feature", y = "Mean Decrease Gini")
+```
+
+## Objective 3: Department and Age Group Analysis
+
+```{r department-analysis}
+# Attrition rate by department
+dept_attr <- train %>%
+  group_by(Job.Role) %>%
+  summarise(AttritionRate = mean(Attrition)) %>%
+  arrange(desc(AttritionRate))
+
+ggplot(dept_attr, aes(x = reorder(Job.Role, AttritionRate), y = AttritionRate)) +
+  geom_col(fill = "tomato") +
+  coord_flip() +
+  labs(title = "Attrition Rate by Job Role",
+       x = "Job Role", y = "Attrition Rate")
+```
+
+```{r age-group-analysis}
+# Age group bins
+train$AgeGroup <- cut(train$Age, breaks = c(20, 30, 40, 50, 60), right = FALSE,
+                      labels = c("20-29", "30-39", "40-49", "50-59"))
+
+age_attr <- train %>%
+  group_by(AgeGroup) %>%
+  summarise(AttritionRate = mean(Attrition))
+
+ggplot(age_attr, aes(x = AgeGroup, y = AttritionRate)) +
+  geom_col(fill = "forestgreen") +
+  labs(title = "Attrition Rate by Age Group",
+       x = "Age Group", y = "Attrition Rate")
+```
+
+## Policy Recommendations
+Offer flexible remote work options
+
+Invest in mentorship and development programs for younger employees
+
+Focus retention efforts on high-attrition departments
+
+Use feature insights to guide HR policy decisions
